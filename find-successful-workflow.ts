@@ -17,6 +17,7 @@ const errorOnNoSuccessfulWorkflow = process.argv[4];
 const lastSuccessfulEvent = process.argv[5];
 const workingDirectory = process.argv[6];
 const workflowId = process.argv[7];
+const tagPattern = process.argv[8];
 const defaultWorkingDirectory = ".";
 
 const ProxifiedClient = Octokit.plugin(proxyPlugin);
@@ -183,7 +184,32 @@ async function findSuccessfulCommit(
       workflow_runs.map((run: { head_sha: any }) => run.head_sha)
     );
 
-  return await findExistingCommit(octokit, branch, shas);
+  const filteredShas = await filterShasByTagPattern(octokit, shas);
+
+  return await findExistingCommit(octokit, branch, filteredShas);
+}
+
+async function filterShasByTagPattern(octokit: Octokit, shas: string[]): Promise<string[]> {
+  if (tagPattern === '' || tagPattern === undefined) {
+    return shas;
+  }
+
+  const tags = await octokit.rest.repos.listTags({
+    owner,
+    repo,
+    per_page: 100,
+  });
+
+  const filteredShas = []
+  const tagNamePatternRegEx = new RegExp(tagPattern);
+
+  for (const tag of tags.data) {
+    if (tagNamePatternRegEx.test(tag.name) && shas.includes(tag.commit.sha)) {
+      filteredShas.push(tag.commit.sha);
+    }
+  }
+
+  return filteredShas;
 }
 
 async function findMergeBaseRef(): Promise<string> {
